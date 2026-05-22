@@ -38,6 +38,7 @@ SUBMIT_CMD="sbatch $*"
 # 3. Submit the dependent notifier job. afterany fires whenever the job terminates.
 NOTIFIER_JID=$(sbatch --parsable \
   --partition="$NOTIFIER_PARTITION" \
+  --qos="$NOTIFIER_QOS" \
   --time="$NOTIFIER_TIME" \
   --mem="$NOTIFIER_MEM" \
   --ntasks=1 \
@@ -46,6 +47,7 @@ NOTIFIER_JID=$(sbatch --parsable \
   --kill-on-invalid-dep=yes \
   --output="$HERE/logs/notify-%j.out" \
   "$HERE/notifier.sbatch" \
+    --confdir "$HERE" \
     --jobid "$JOBID" \
     --stdout "$STDOUT" \
     --stderr "$STDERR" \

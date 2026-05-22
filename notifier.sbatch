@@ -5,15 +5,13 @@
 #SBATCH --job-name=notifier
 set -uo pipefail
 
-HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=config.sh
-source "$HERE/config.sh"
-export PATH="$SLURM_BIN:$PATH"
-
-# --- parse args passed by notify-sbatch ---
-JOBID="" ; STDOUT="" ; STDERR="" ; WORKDIR="" ; SUBMIT_CMD=""
+# SLURM copies this script to a private spool dir before running it, so it cannot
+# locate config.sh via its own path. notify-sbatch passes the install dir as --confdir.
+# Parse args FIRST, then source config from the install dir.
+CONFDIR="" ; JOBID="" ; STDOUT="" ; STDERR="" ; WORKDIR="" ; SUBMIT_CMD=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --confdir) CONFDIR="$2"; shift 2;;
     --jobid)   JOBID="$2";   shift 2;;
     --stdout)  STDOUT="$2";  shift 2;;
     --stderr)  STDERR="$2";  shift 2;;
@@ -22,6 +20,10 @@ while [[ $# -gt 0 ]]; do
     *) shift;;
   esac
 done
+
+# shellcheck source=config.sh
+source "$CONFDIR/config.sh"
+export PATH="$SLURM_BIN:$PATH"
 
 # --- gather core stats (retry: slurmdbd can lag a moment after the job ends) ---
 LINE=""
