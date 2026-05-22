@@ -23,7 +23,7 @@ done
 
 # shellcheck source=config.sh
 source "$CONFDIR/config.sh"
-export PATH="$SLURM_BIN:$PATH"
+[[ -n "${SLURM_BIN:-}" ]] && export PATH="$SLURM_BIN:$PATH"
 
 # --- gather stats (retry: slurmdbd can lag a moment after the job ends) ---
 # Parent allocation row (-X) for state/timing/requests; MaxRSS lives on step rows.
@@ -312,7 +312,7 @@ send_mail() {
   local subj_enc="=?UTF-8?B?$(printf '%s' "$SUBJECT" | base64 | tr -d '\n')?="
   {
     printf 'To: %s\n' "$EMAIL"
-    printf 'From: %s@nottingham.ac.uk\n' "${USER:-pmyjm22}"
+    printf 'From: %s\n' "$FROM"
     printf 'Subject: %s\n' "$subj_enc"
     printf 'MIME-Version: 1.0\n'
     printf 'Content-Type: multipart/alternative; boundary="%s"\n\n' "$boundary"

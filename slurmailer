@@ -9,7 +9,7 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=config.sh
 source "$HERE/config.sh"
-export PATH="$SLURM_BIN:$PATH"
+[[ -n "${SLURM_BIN:-}" ]] && export PATH="$SLURM_BIN:$PATH"
 
 if [[ $# -eq 0 ]]; then
   echo "usage: slurmailer [sbatch-options] <script> [script-args...]" >&2
@@ -36,16 +36,15 @@ WORKDIR=$(field WorkDir)
 SUBMIT_CMD="sbatch $*"
 
 # 3. Submit the dependent notifier job. afterany fires whenever the job terminates.
-NOTIFIER_JID=$(sbatch --parsable \
-  --partition="$NOTIFIER_PARTITION" \
-  --qos="$NOTIFIER_QOS" \
-  --time="$NOTIFIER_TIME" \
-  --mem="$NOTIFIER_MEM" \
-  --ntasks=1 \
-  --job-name="notify-$JOBID" \
-  --dependency=afterany:"$JOBID" \
-  --kill-on-invalid-dep=yes \
-  --output="$HERE/logs/notify-%j.out" \
+#    Partition/QOS are added only if configured (empty -> account default).
+opts=( --parsable
+       --time="$NOTIFIER_TIME" --mem="$NOTIFIER_MEM" --ntasks=1
+       --job-name="notify-$JOBID"
+       --dependency=afterany:"$JOBID" --kill-on-invalid-dep=yes
+       --output="$HERE/logs/notify-%j.out" )
+[[ -n "${NOTIFIER_PARTITION:-}" ]] && opts+=( --partition="$NOTIFIER_PARTITION" )
+[[ -n "${NOTIFIER_QOS:-}" ]]       && opts+=( --qos="$NOTIFIER_QOS" )
+NOTIFIER_JID=$(sbatch "${opts[@]}" \
   "$HERE/notifier.sbatch" \
     --confdir "$HERE" \
     --jobid "$JOBID" \
