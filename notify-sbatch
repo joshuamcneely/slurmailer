@@ -1,0 +1,54 @@
+#!/bin/bash
+# notify-sbatch: submit a SLURM job and a dependent "notifier" job that emails a
+# rich report when the job ends in ANY state (success, fail, timeout, OOM, cancel).
+#
+# Usage: notify-sbatch [sbatch-options] <script> [script-args...]
+# All arguments pass straight through to sbatch.
+set -euo pipefail
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=config.sh
+source "$HERE/config.sh"
+export PATH="$SLURM_BIN:$PATH"
+
+if [[ $# -eq 0 ]]; then
+  echo "usage: notify-sbatch [sbatch-options] <script> [script-args...]" >&2
+  exit 2
+fi
+
+mkdir -p "$HERE/logs"
+
+# 1. Submit the real job, passing through every sbatch argument.
+JOBID=$(sbatch --parsable "$@")
+if [[ -z "${JOBID:-}" ]]; then
+  echo "notify-sbatch: job submission failed" >&2
+  exit 1
+fi
+echo "submitted job:  $JOBID"
+
+# 2. Capture fully-resolved paths/metadata while the controller still knows the job.
+#    SLURM has already expanded %j/%x in the output paths for us.
+INFO=$(scontrol show job "$JOBID" 2>/dev/null || true)
+field() { sed -n "s/.*[[:space:]]\{0,1\}$1=\([^[:space:]]*\).*/\1/p" <<<"$INFO" | head -1; }
+STDOUT=$(field StdOut)
+STDERR=$(field StdErr)
+WORKDIR=$(field WorkDir)
+SUBMIT_CMD="sbatch $*"
+
+# 3. Submit the dependent notifier job. afterany fires whenever the job terminates.
+NOTIFIER_JID=$(sbatch --parsable \
+  --partition="$NOTIFIER_PARTITION" \
+  --time="$NOTIFIER_TIME" \
+  --mem="$NOTIFIER_MEM" \
+  --ntasks=1 \
+  --job-name="notify-$JOBID" \
+  --dependency=afterany:"$JOBID" \
+  --kill-on-invalid-dep=yes \
+  --output="$HERE/logs/notify-%j.out" \
+  "$HERE/notifier.sbatch" \
+    --jobid "$JOBID" \
+    --stdout "$STDOUT" \
+    --stderr "$STDERR" \
+    --workdir "$WORKDIR" \
+    --submit "$SUBMIT_CMD")
+echo "notifier job:   $NOTIFIER_JID  (emails $EMAIL when $JOBID ends)"

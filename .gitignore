@@ -1,0 +1,5 @@
+logs/
+tests/*.out
+tests/.last_probe_jid
+*.swp
+.DS_Store
