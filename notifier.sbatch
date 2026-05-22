@@ -247,15 +247,19 @@ STDOUT_TAIL="$([[ -n "$STDOUT" && -s "$STDOUT" ]] && tail -n "$LOG_TAIL_LINES" "
 STDERR_TAIL=""
 [[ -n "$STDERR" && "$STDERR" != "$STDOUT" && -s "$STDERR" ]] && STDERR_TAIL="$(tail -n "$LOG_TAIL_LINES" "$STDERR")"
 
-BANNER="================================================================
-   S L U R M A I L E R     ::     JOB $VERDICT
-================================================================"
+# Static ASCII-art wordmark (figlet "standard"). Single-quoted literal: backslashes
+# stay literal and there is no command substitution to mis-parse. Pure ASCII.
+LOGO=' ____   _      _   _   ____   __  __     _     ___  _      _____  ____
+/ ___| | |    | | | ||  _ \ |  \/  |   / \   |_ _|| |    | ____||  _ \
+\___ \ | |    | | | || |_) || |\/| |  / _ \   | | | |    |  _|  | |_) |
+ ___) || |___ | |_| ||  _ < | |  | | / ___ \  | | | |___ | |___ |  _ <
+|____/ |_____| \___/ |_| \_\|_|  |_|/_/   \_\|___||_____||_____||_| \_\'
+LOGO_ESC="$(hesc "$LOGO")"
 
-# Terminal body: one <pre>; spans colour the banner, status, sections, next-step.
+# Terminal body: one <pre>; spans colour the headline, sections, next-step.
 PRE="$(
-  printf '<span style="color:%s;font-weight:bold">%s</span>\n\n' "$CFG" "$(esc "$BANNER")"
+  printf '<span style="color:%s;font-weight:bold">&gt;&gt; JOB %s  [%s]</span>\n\n' "$CFG" "$(esc "$VERDICT")" "$(esc "$EXITINFO")"
   kv 'job'    "$(esc "$JOBNAME")  ($JOBID)"
-  kv 'result' "<span style=\"color:$CFG;font-weight:bold\">$(esc "$VERDICT")</span>  [$(esc "$EXITINFO")]"
   sec 'explanation'
   printf '%s\n' "$(hesc "$EXPLAIN_RAW")"
   if [[ -n "$NEXT_RAW" ]]; then
@@ -280,18 +284,21 @@ PRE="$(
   printf '  %s\n' "$(esc "$SUBMIT_CMD")"
   [[ -n "$STDOUT_TAIL" ]] && { sec "stdout :: $(esc "$STDOUT")"; printf '%s\n' "$(hesc "$STDOUT_TAIL")"; }
   [[ -n "$STDERR_TAIL" ]] && { sec "stderr :: $(esc "$STDERR")"; printf '%s\n' "$(hesc "$STDERR_TAIL")"; }
-  printf '\n<span style="color:#3f8f5a">pmyjm22@ada:~$</span> _\n'
+  printf '\n<span style="color:#3f8f5a">pmyjm22@ada:~$</span> <span class="cur">_</span>\n'
 )"
 
 HTML_BODY="$(cat <<EOF
-<!DOCTYPE html><html><head><meta charset="utf-8"></head>
+<!DOCTYPE html><html><head><meta charset="utf-8">
+<style>
+  @keyframes blink{0%,50%{opacity:1}50.01%,100%{opacity:0}}
+  .cur{animation:blink 1.1s step-end infinite}
+  .term{background-color:#05080a;background-image:repeating-linear-gradient(0deg,rgba(0,0,0,.38),rgba(0,0,0,.38) 1px,rgba(0,0,0,0) 1px,rgba(0,0,0,0) 3px);}
+</style></head>
 <body style="margin:0;padding:0;background:#000000;">
-<table width="100%" cellpadding="0" cellspacing="0" style="background:#000000;padding:18px 8px;"><tr><td align="center">
-<table width="680" cellpadding="0" cellspacing="0" style="max-width:680px;width:100%;background:#05080a;border:1px solid #1f5d2f;box-shadow:0 0 18px rgba(43,255,136,.18);">
-  <tr><td style="background:#0c140c;border-bottom:1px solid #1f5d2f;padding:7px 12px;font-family:'Courier New',monospace;font-size:12px;color:#7CFC9B;">
-    <span style="color:#ff5f56">&#9679;</span> <span style="color:#ffbd2e">&#9679;</span> <span style="color:#27c93f">&#9679;</span> &nbsp; pmyjm22@ada :: slurmailer
-  </td></tr>
-  <tr><td style="padding:14px 16px 18px;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#000000;padding:20px 8px;"><tr><td align="center">
+<table width="700" cellpadding="0" cellspacing="0" class="term" style="max-width:700px;width:100%;background:#05080a;border:1px solid #1f5d2f;box-shadow:0 0 22px rgba(43,255,136,.20);">
+  <tr><td style="padding:18px 18px 20px;">
+    <pre style="margin:0 0 10px;font-family:'Courier New',Courier,monospace;font-size:11px;line-height:1.08;color:#2f9a5c;white-space:pre;overflow-x:auto;text-shadow:0 0 2px rgba(45,200,110,.6);">$LOGO_ESC</pre>
     <pre style="margin:0;font-family:'Courier New',Courier,monospace;font-size:13px;line-height:1.5;color:#79e6a4;text-shadow:0 0 1px rgba(121,230,164,.45);white-space:pre-wrap;word-break:break-word;">$PRE</pre>
   </td></tr>
 </table>

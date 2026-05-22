@@ -56,5 +56,6 @@ Edit `config.sh`:
 ## Status
 
 Working and verified end-to-end. The email is sent as **multipart/alternative**: a
-formatted HTML version (colour-coded header by outcome, tables, dark log-tail block)
-with a plain-text fallback for clients that don't render HTML.
+retro CRT-terminal HTML version (phosphor-green monospace on black, an ASCII-art
+SLURMAILER wordmark, outcome-coloured headline, ASCII section rules, CRT scanlines and
+a blinking cursor) with a clean plain-text fallback for clients that don't render HTML.
