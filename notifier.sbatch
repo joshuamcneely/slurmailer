@@ -43,15 +43,15 @@ IFS='|' read -r JOBNAME STATE EXITCODE ELAPSED SUBMIT START END QUEUED PART NODE
 MAXRSS=$(sacct -j "$JOBID" --noheader --parsable2 --format=MaxRSS \
   | grep -vE '^$' | sort -h | tail -1)
 
-# --- verdict (ASCII for now; HTML/glyphs are a later polish) ---
+# --- verdict: ASCII tag (subject/text), unicode glyph + colours (HTML header) ---
 case "$STATE" in
-  COMPLETED*)      TAG="OK";        VERDICT="COMPLETED";;
-  FAILED*)         TAG="FAILED";    VERDICT="FAILED";;
-  TIMEOUT*)        TAG="TIMEOUT";   VERDICT="TIMEOUT";;
-  OUT_OF_MEMORY*)  TAG="OOM";       VERDICT="OUT OF MEMORY";;
-  CANCELLED*)      TAG="CANCELLED"; VERDICT="$STATE";;
-  NODE_FAIL*)      TAG="NODE_FAIL"; VERDICT="NODE FAILURE";;
-  *)               TAG="$STATE";    VERDICT="$STATE";;
+  COMPLETED*)      TAG="OK";        VERDICT="COMPLETED";     GLYPH="✓"; CBG="#e6f4ea"; CFG="#1a7f37";;
+  FAILED*)         TAG="FAILED";    VERDICT="FAILED";        GLYPH="✗"; CBG="#fde8e6"; CFG="#c0392b";;
+  TIMEOUT*)        TAG="TIMEOUT";   VERDICT="TIMEOUT";       GLYPH="⏱"; CBG="#fff4e5"; CFG="#b7791f";;
+  OUT_OF_MEMORY*)  TAG="OOM";       VERDICT="OUT OF MEMORY"; GLYPH="✗"; CBG="#fde8e6"; CFG="#c0392b";;
+  CANCELLED*)      TAG="CANCELLED"; VERDICT="$STATE";        GLYPH="⚠"; CBG="#fff4e5"; CFG="#b7791f";;
+  NODE_FAIL*)      TAG="NODE_FAIL"; VERDICT="NODE FAILURE";  GLYPH="✗"; CBG="#fde8e6"; CFG="#c0392b";;
+  *)               TAG="$STATE";    VERDICT="$STATE";        GLYPH="•"; CBG="#eef1f4"; CFG="#1f2328";;
 esac
 
 # --- decode the exit code. SLURM reports "<code>:<signal>". ---
@@ -192,8 +192,9 @@ if [[ -n "$STDERR" && "$STDERR" != "$STDOUT" ]]; then
   STDERR_BLOCK="$(log_block "stderr" "$STDERR")"
 fi
 
-EXPLANATION="$(explain | sed 's/^/  /')"
-NEXT="$(next_step)"
+EXPLAIN_RAW="$(explain)"
+NEXT_RAW="$(next_step)"
+EXPLANATION="$(printf '%s' "$EXPLAIN_RAW" | sed 's/^/  /')"
 
 # Show the signal only when it is a real signal number (1-31); SLURM uses out-of-range
 # values like 125 internally (e.g. for OOM), which would otherwise be confusing.
@@ -203,14 +204,14 @@ else
   EXITINFO="exit code $CODE"
 fi
 
-SUBJECT="[ada] $JOBNAME ($JOBID) $TAG - $ELAPSED"
-BODY="$(cat <<EOF
+# ===================== plain-text part =====================
+TEXT_BODY="$(cat <<EOF
 Job:        $JOBNAME ($JOBID)
 Result:     $VERDICT  ($EXITINFO)
 
 Explanation:
 $EXPLANATION
-$( [[ -n "$NEXT" ]] && printf '\nNext step:\n  %s\n' "$NEXT" )
+$( [[ -n "$NEXT_RAW" ]] && printf '\nNext step:\n  %s\n' "$NEXT_RAW" )
 Timing:
   Submitted:  $SUBMIT
   Started:    $START
@@ -234,24 +235,88 @@ $STDOUT_BLOCK$STDERR_BLOCK-- slurmailer
 EOF
 )"
 
-# --- send (prefer sendmail; fall back to mail). Both verified to deliver from ada. ---
-send_mail() {
-  local subject="$1" body="$2"
-  if command -v sendmail >/dev/null 2>&1; then
-    sendmail -t <<MAIL
-To: $EMAIL
-Subject: $subject
-From: ${USER:-pmyjm22}@nottingham.ac.uk
-
-$body
-MAIL
-  else
-    printf '%s\n' "$body" | mail -s "$subject" "$EMAIL"
-  fi
+# ===================== HTML part =====================
+html_escape() { sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'; }
+esc()  { printf '%s' "${1:-}" | html_escape; }                 # escape a scalar
+para() { printf '%s' "${1:-}" | html_escape | sed 's#$#<br>#'; } # multi-line -> <br>
+row()  { printf '<tr><td style="padding:2px 14px 2px 0;color:#777;vertical-align:top;white-space:nowrap;">%s</td><td style="padding:2px 0;color:#1f2328;">%s</td></tr>' "$1" "$2"; }
+log_html() { # label path tail -> html block (empty if no tail)
+  local label="$1" path="$2" tail="$3"
+  [[ -z "$tail" ]] && return
+  printf '<div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:.04em;margin:16px 0 4px;">%s</div><div style="font-size:11px;color:#999;margin-bottom:4px;word-break:break-all;">%s</div><pre style="margin:0;padding:10px;background:#0d1117;color:#c9d1d9;border-radius:6px;font-size:12px;line-height:1.45;overflow:auto;white-space:pre-wrap;word-break:break-word;">%s</pre>' \
+    "$label" "$(esc "$path")" "$(printf '%s' "$tail" | html_escape)"
 }
 
-send_mail "$SUBJECT" "$BODY"
+EXPLAIN_HTML="$(para "$EXPLAIN_RAW")"
+NEXT_HTML_BLOCK=""
+[[ -n "$NEXT_RAW" ]] && NEXT_HTML_BLOCK="<div style=\"margin-top:12px;padding:10px 12px;background:#fff8e1;border-left:3px solid #f0b400;border-radius:4px;font-size:13px;color:#5f4b00;\">$(para "$NEXT_RAW")</div>"
+
+TIMING_ROWS="$(row Submitted "$(esc "$SUBMIT")"; row Started "$(esc "$START")"; row Ended "$(esc "$END")"; row 'Queue wait' "$(esc "$QUEUED")"; row Elapsed "$(esc "$ELAPSED")")"
+RES_ROWS="$(row CPUs "$(esc "${ALLOCCPUS:-?}")"; row 'CPU time' "$(esc "${TOTALCPU:-?}") &nbsp;(efficiency $(esc "$CPU_EFF"))"; row Memory "$(esc "$MEM_USED") used of $(esc "${REQMEM:-?}") requested &nbsp;($(esc "$MEM_EFF"))")"
+PLACE_ROWS="$(row Partition "$(esc "$PART")"; row 'Node(s)' "$(esc "$NODELIST")"; row Workdir "$(esc "$WORKDIR")")"
+
+STDOUT_HTML="$(log_html "stdout" "$STDOUT" "$([[ -n "$STDOUT" && -s "$STDOUT" ]] && tail -n "$LOG_TAIL_LINES" "$STDOUT")")"
+STDERR_HTML=""
+[[ -n "$STDERR" && "$STDERR" != "$STDOUT" ]] && STDERR_HTML="$(log_html "stderr" "$STDERR" "$([[ -s "$STDERR" ]] && tail -n "$LOG_TAIL_LINES" "$STDERR")")"
+
+sec_label='font-size:11px;color:#888;text-transform:uppercase;letter-spacing:.04em;margin:16px 0 4px;'
+HTML_BODY="$(cat <<EOF
+<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f4f4f5;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:16px 8px;"><tr><td align="center">
+<table width="640" cellpadding="0" cellspacing="0" style="max-width:640px;width:100%;background:#ffffff;border:1px solid #e2e2e4;border-radius:8px;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#1f2328;">
+  <tr><td style="background:$CBG;border-top-left-radius:8px;border-top-right-radius:8px;padding:16px 20px;border-bottom:1px solid #e2e2e4;">
+    <div style="font-size:20px;font-weight:600;color:$CFG;">$GLYPH&nbsp;$(esc "$VERDICT")</div>
+    <div style="font-size:13px;color:#555;margin-top:3px;">$(esc "$JOBNAME") &middot; job $JOBID &middot; $(esc "$EXITINFO")</div>
+  </td></tr>
+  <tr><td style="padding:16px 20px 0;">
+    <div style="font-size:14px;line-height:1.5;">$EXPLAIN_HTML</div>
+    $NEXT_HTML_BLOCK
+  </td></tr>
+  <tr><td style="padding:4px 20px 0;">
+    <div style="$sec_label">Timing</div><table cellpadding="0" cellspacing="0" style="font-size:13px;">$TIMING_ROWS</table>
+    <div style="$sec_label">Resources</div><table cellpadding="0" cellspacing="0" style="font-size:13px;">$RES_ROWS</table>
+    <div style="$sec_label">Placement</div><table cellpadding="0" cellspacing="0" style="font-size:13px;">$PLACE_ROWS</table>
+  </td></tr>
+  <tr><td style="padding:8px 20px 0;">
+    <div style="$sec_label">Submit command</div>
+    <pre style="margin:0;padding:10px;background:#f6f8fa;border:1px solid #e2e2e4;border-radius:6px;font-size:12px;overflow:auto;white-space:pre-wrap;word-break:break-word;">$(esc "$SUBMIT_CMD")</pre>
+  </td></tr>
+  <tr><td style="padding:0 20px 8px;">$STDOUT_HTML$STDERR_HTML</td></tr>
+  <tr><td style="padding:12px 20px;border-top:1px solid #eee;color:#999;font-size:11px;">sent by slurmailer</td></tr>
+</table>
+</td></tr></table>
+</body></html>
+EOF
+)"
+
+# ===================== send as multipart/alternative =====================
+SUBJECT="[ada] $GLYPH $JOBNAME ($JOBID) $TAG - $ELAPSED"
+send_mail() {
+  if ! command -v sendmail >/dev/null 2>&1; then
+    # Fallback: plain text only (loses HTML), still delivers.
+    printf '%s\n' "$TEXT_BODY" | mail -s "[ada] $JOBNAME ($JOBID) $TAG - $ELAPSED" "$EMAIL"
+    return
+  fi
+  local boundary="==slurmailer_${JOBID}_${RANDOM}=="
+  local subj_enc="=?UTF-8?B?$(printf '%s' "$SUBJECT" | base64 | tr -d '\n')?="
+  {
+    printf 'To: %s\n' "$EMAIL"
+    printf 'From: %s@nottingham.ac.uk\n' "${USER:-pmyjm22}"
+    printf 'Subject: %s\n' "$subj_enc"
+    printf 'MIME-Version: 1.0\n'
+    printf 'Content-Type: multipart/alternative; boundary="%s"\n\n' "$boundary"
+    printf -- '--%s\n' "$boundary"
+    printf 'Content-Type: text/plain; charset=UTF-8\n'
+    printf 'Content-Transfer-Encoding: 8bit\n\n%s\n\n' "$TEXT_BODY"
+    printf -- '--%s\n' "$boundary"
+    printf 'Content-Type: text/html; charset=UTF-8\n'
+    printf 'Content-Transfer-Encoding: 8bit\n\n%s\n\n' "$HTML_BODY"
+    printf -- '--%s--\n' "$boundary"
+  } | sendmail -t
+}
+
+send_mail
 echo "notifier: sent '$SUBJECT' to $EMAIL (job $JOBID state=$STATE)"
 
-# Echo the composed message to this notifier's own log for debugging/audit.
-printf '\n----- email body -----\n%s\n' "$BODY"
+# Echo the composed parts to this notifier's own log for debugging/audit.
+printf '\n----- text body -----\n%s\n\n----- html body -----\n%s\n' "$TEXT_BODY" "$HTML_BODY"

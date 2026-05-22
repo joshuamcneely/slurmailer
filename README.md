@@ -55,5 +55,6 @@ Edit `config.sh`:
 
 ## Status
 
-Plain-text email with all of the above is working and verified end-to-end. A later
-polish would render it as multipart HTML; see the design plan.
+Working and verified end-to-end. The email is sent as **multipart/alternative**: a
+formatted HTML version (colour-coded header by outcome, tables, dark log-tail block)
+with a plain-text fallback for clients that don't render HTML.
