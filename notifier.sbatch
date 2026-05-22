@@ -77,21 +77,34 @@ signal_name() {
   esac
 }
 
-# Reference note for common coded exit statuses (only shown for non-zero codes).
+# Explain the exit code. Standard codes get a specific note; signal-coded codes
+# (128+N) are decoded; everything else is correctly described as application-defined.
 code_reference() {
+  [[ "$CODE" == "0" ]] && return
   case "$CODE" in
-    1)   echo "Exit 1 is a generic error (the program reported failure).";;
-    2)   echo "Exit 2 often means misuse of a shell builtin or bad arguments.";;
-    126) echo "Exit 126 means a command was found but is not executable (permissions).";;
-    127) echo "Exit 127 means 'command not found' - check module loads and PATH in your script.";;
-    128) echo "Exit 128 means an invalid exit argument was used.";;
+    1)   echo "Exit 1 is a generic 'something went wrong' error.";;
+    2)   echo "Exit 2 conventionally means misuse of a command (bad arguments or usage).";;
+    126) echo "Exit 126: a command was found but could not be executed (permissions / not executable).";;
+    127) echo "Exit 127: 'command not found' - check module loads and PATH in your script.";;
+    128) echo "Exit 128: an invalid argument was passed to exit().";;
     130) echo "Exit 130 = 128+2: terminated by SIGINT (Ctrl-C).";;
+    132) echo "Exit 132 = 128+4: illegal instruction (SIGILL).";;
+    134) echo "Exit 134 = 128+6: aborted (SIGABRT), often a failed assertion.";;
+    136) echo "Exit 136 = 128+8: arithmetic error such as divide-by-zero (SIGFPE).";;
     137) echo "Exit 137 = 128+9: killed by SIGKILL - usually an out-of-memory or walltime kill.";;
-    139) echo "Exit 139 = 128+11: crashed with a segmentation fault.";;
+    139) echo "Exit 139 = 128+11: segmentation fault (invalid memory access).";;
     143) echo "Exit 143 = 128+15: terminated by SIGTERM.";;
-    *)   if [[ "$CODE" -gt 128 ]] 2>/dev/null; then
-           echo "Exit $CODE = 128+$((CODE-128)): killed by $(signal_name $((CODE-128)))."
-         fi;;
+    255) echo "Exit 255 usually means the program returned -1 or a status outside 0-255.";;
+    *)
+      if [[ "$CODE" =~ ^[0-9]+$ && "$CODE" -gt 128 && "$CODE" -le 192 ]]; then
+        echo "Exit $CODE = 128+$((CODE-128)): the program was killed by $(signal_name $((CODE-128)))."
+      else
+        echo "Exit code $CODE is application-defined - it is chosen by the program itself, not a"
+        echo "standard system code, so its meaning depends on this program. Check the program's"
+        echo "own output/log (see the tail below) or its documentation for what status $CODE means."
+        echo "(Standard codes: 0=success, 1=general error, 2=usage, 126/127=exec problems,"
+        echo "128+N=killed by signal N.)"
+      fi;;
   esac
 }
 
