@@ -21,6 +21,8 @@ if [[ -z "${EMAIL:-}" ]]; then
 fi
 
 mkdir -p "$HERE/logs"
+# Housekeeping: drop notifier logs older than 30 days so logs/ doesn't grow forever.
+find "$HERE/logs" -name 'notify-*.out' -mtime +30 -delete 2>/dev/null || true
 
 # 1. Submit the real job, passing through every sbatch argument.
 if ! JOBID=$(sbatch --parsable "$@"); then

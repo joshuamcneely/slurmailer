@@ -116,8 +116,22 @@ slurmailer [any sbatch options] <script> [script args]
 ## Repository layout
 
 ```
-slurmailer        # the command you run (a drop-in for sbatch)
-notifier.sbatch   # the dependent job that gathers stats and emails
-config.sh         # your settings
-tests/            # tiny success / failure / OOM jobs for end-to-end testing
+slurmailer            # the command you run (a drop-in for sbatch)
+notifier.sbatch       # the dependent job that gathers stats and emails
+lib.sh                # shared, pure helper functions (sourced by the above + tests)
+config.sh             # your settings
+tests/                # tiny success / failure / OOM jobs for end-to-end testing
+tests/run-tests.sh    # unit + syntax tests for the helpers
 ```
+
+## Development / tests
+
+The logic-bearing helpers live in `lib.sh` and are unit-tested. Run the suite (no
+SLURM or cluster needed — it works on any machine with bash):
+
+```
+bash tests/run-tests.sh
+```
+
+It runs `bash -n` syntax checks on every script and asserts the behaviour of the
+exit-code/signal explanations, time/memory parsing, and HTML escaping.
