@@ -1,8 +1,8 @@
 #!/bin/bash
-# notify-sbatch: submit a SLURM job and a dependent "notifier" job that emails a
+# slurmailer: submit a SLURM job and a dependent "notifier" job that emails a
 # rich report when the job ends in ANY state (success, fail, timeout, OOM, cancel).
 #
-# Usage: notify-sbatch [sbatch-options] <script> [script-args...]
+# Usage: slurmailer [sbatch-options] <script> [script-args...]
 # All arguments pass straight through to sbatch.
 set -euo pipefail
 
@@ -12,7 +12,7 @@ source "$HERE/config.sh"
 export PATH="$SLURM_BIN:$PATH"
 
 if [[ $# -eq 0 ]]; then
-  echo "usage: notify-sbatch [sbatch-options] <script> [script-args...]" >&2
+  echo "usage: slurmailer [sbatch-options] <script> [script-args...]" >&2
   exit 2
 fi
 
@@ -21,7 +21,7 @@ mkdir -p "$HERE/logs"
 # 1. Submit the real job, passing through every sbatch argument.
 JOBID=$(sbatch --parsable "$@")
 if [[ -z "${JOBID:-}" ]]; then
-  echo "notify-sbatch: job submission failed" >&2
+  echo "slurmailer: job submission failed" >&2
   exit 1
 fi
 echo "submitted job:  $JOBID"
