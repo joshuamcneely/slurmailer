@@ -25,6 +25,11 @@ done
 source "$CONFDIR/config.sh"
 [[ -n "${SLURM_BIN:-}" ]] && export PATH="$SLURM_BIN:$PATH"
 
+# Cluster label (config override -> SLURM's cluster name -> generic) and who/where,
+# used in the subject and the terminal header/prompt. Never hardcode a site here.
+CLUSTER="${CLUSTER_LABEL:-${SLURM_CLUSTER_NAME:-cluster}}"
+WHO="${USER:-user}@$CLUSTER"
+
 # --- gather stats (retry: slurmdbd can lag a moment after the job ends) ---
 # Parent allocation row (-X) for state/timing/requests; MaxRSS lives on step rows.
 LINE=""
@@ -237,10 +242,10 @@ EOF
 
 # ===================== HTML part (retro CRT terminal) =====================
 html_escape() { sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'; }
-esc() { printf '%s' "${1:-}" | html_escape; }                       # escape a scalar
-hesc() { printf '%s' "${1:-}" | html_escape; }                      # escape multi-line block
+esc() { printf '%s' "${1:-}" | html_escape; }                       # escape (scalar or multi-line)
 kv()  { printf '  %-10s %s\n' "$1" "$2"; }                          # aligned key/value line
 sec() { printf '\n<span style="color:#3f8f5a">--[ %s ]----------------------------------------</span>\n' "$1"; }
+WHO_ESC="$(esc "$WHO")"
 
 # Raw log tails (shared by text + HTML).
 STDOUT_TAIL="$([[ -n "$STDOUT" && -s "$STDOUT" ]] && tail -n "$LOG_TAIL_LINES" "$STDOUT")"
@@ -257,10 +262,10 @@ PRE="$(
   kv 'job'    "$(esc "$JOBNAME")  ($JOBID)"
   kv 'result' "<span style=\"color:$CFG;font-weight:bold\">$(esc "$VERDICT")</span>  [$(esc "$EXITINFO")]"
   sec 'explanation'
-  printf '%s\n' "$(hesc "$EXPLAIN_RAW")"
+  printf '%s\n' "$(esc "$EXPLAIN_RAW")"
   if [[ -n "$NEXT_RAW" ]]; then
     sec 'next step'
-    printf '<span style="color:#ffbd2e">%s</span>\n' "$(hesc "$NEXT_RAW")"
+    printf '<span style="color:#ffbd2e">%s</span>\n' "$(esc "$NEXT_RAW")"
   fi
   sec 'timing'
   kv 'submitted' "$(esc "$SUBMIT")"
@@ -278,9 +283,9 @@ PRE="$(
   kv 'workdir'   "$(esc "$WORKDIR")"
   sec 'submit'
   printf '  %s\n' "$(esc "$SUBMIT_CMD")"
-  [[ -n "$STDOUT_TAIL" ]] && { sec "stdout :: $(esc "$STDOUT")"; printf '%s\n' "$(hesc "$STDOUT_TAIL")"; }
-  [[ -n "$STDERR_TAIL" ]] && { sec "stderr :: $(esc "$STDERR")"; printf '%s\n' "$(hesc "$STDERR_TAIL")"; }
-  printf '\n<span style="color:#3f8f5a">pmyjm22@ada:~$</span> _\n'
+  [[ -n "$STDOUT_TAIL" ]] && { sec "stdout :: $(esc "$STDOUT")"; printf '%s\n' "$(esc "$STDOUT_TAIL")"; }
+  [[ -n "$STDERR_TAIL" ]] && { sec "stderr :: $(esc "$STDERR")"; printf '%s\n' "$(esc "$STDERR_TAIL")"; }
+  printf '\n<span style="color:#3f8f5a">%s:~$</span> _\n' "$WHO_ESC"
 )"
 
 HTML_BODY="$(cat <<EOF
@@ -289,7 +294,7 @@ HTML_BODY="$(cat <<EOF
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#000000;padding:18px 8px;"><tr><td align="center">
 <table width="680" cellpadding="0" cellspacing="0" style="max-width:680px;width:100%;background:#05080a;border:1px solid #1f5d2f;box-shadow:0 0 18px rgba(43,255,136,.18);">
   <tr><td style="background:#0c140c;border-bottom:1px solid #1f5d2f;padding:7px 12px;font-family:'Courier New',monospace;font-size:12px;color:#7CFC9B;">
-    pmyjm22@ada :: slurmailer
+    $WHO_ESC :: slurmailer
   </td></tr>
   <tr><td style="padding:14px 16px 18px;">
     <pre style="margin:0;font-family:'Courier New',Courier,monospace;font-size:13px;line-height:1.5;color:#79e6a4;text-shadow:0 0 1px rgba(121,230,164,.45);white-space:pre-wrap;word-break:break-word;">$PRE</pre>
@@ -301,11 +306,11 @@ EOF
 )"
 
 # ===================== send as multipart/alternative =====================
-SUBJECT="[ada] [$TAG] $JOBNAME ($JOBID) - $ELAPSED"
+SUBJECT="[$CLUSTER] [$TAG] $JOBNAME ($JOBID) - $ELAPSED"
 send_mail() {
   if ! command -v sendmail >/dev/null 2>&1; then
     # Fallback: plain text only (loses HTML), still delivers.
-    printf '%s\n' "$TEXT_BODY" | mail -s "[ada] $JOBNAME ($JOBID) $TAG - $ELAPSED" "$EMAIL"
+    printf '%s\n' "$TEXT_BODY" | mail -s "[$CLUSTER] $JOBNAME ($JOBID) $TAG - $ELAPSED" "$EMAIL"
     return
   fi
   local boundary="==slurmailer_${JOBID}_${RANDOM}=="
@@ -313,6 +318,7 @@ send_mail() {
   {
     printf 'To: %s\n' "$EMAIL"
     printf 'From: %s\n' "$FROM"
+    printf 'Date: %s\n' "$(date -R)"
     printf 'Subject: %s\n' "$subj_enc"
     printf 'MIME-Version: 1.0\n'
     printf 'Content-Type: multipart/alternative; boundary="%s"\n\n' "$boundary"

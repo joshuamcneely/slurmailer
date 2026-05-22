@@ -11,6 +11,10 @@ EMAIL="pmyjm22@nottingham.ac.uk"
 # specific sender address.
 FROM="$EMAIL"
 
+# Short label for your cluster, shown in the subject (e.g. "[ada]") and email header.
+# Leave empty ("") to auto-detect from SLURM's $SLURM_CLUSTER_NAME at run time.
+CLUSTER_LABEL="ada"
+
 # Partition + QOS for the tiny dependent notifier job. Choose a combination your
 # account is allowed to submit to.
 #
